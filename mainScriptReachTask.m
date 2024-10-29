@@ -15,7 +15,7 @@ mouseID = 'test-1';   %mouse ID
 newDirectory = strcat(videoFolder, mouseID); 
 mkdir(newDirectory);    %creates new directory with mouseID as folder name
 
-trials = 2; %change for num of trials run
+trials = 10; %change for num of trials run
 counter = 0;
 %%
 for rec = 1:trials    
@@ -41,42 +41,43 @@ for rec = 1:trials
     disp('start pump:')
     
     % Wait for the signal '1' from Arduino
-    received = false;
-    pause(3)
-    disp('waiting for signal for Arduino')
-    while ~received
-        if arduinoSerial.NumBytesAvailable > 0
-            response = read(arduinoSerial, 1, 'char');
-            if response == '1'
-                disp('Water delivery stopped.');
-                received = true;
-            end
-        end
-        pause(0.1); % Small delay 
-    end
+    % received = false;
+    % pause(3)
+    % disp('waiting for signal for Arduino')
+    % while ~received
+    %     if arduinoSerial.NumBytesAvailable > 0
+    %         response = read(arduinoSerial, 1, 'char');
+    %         if response == '1'
+    %             disp('Water delivery stopped.');
+    %             received = true;
+    %         end
+    %     end
+    %     pause(0.1); % Small delay 
+    % end
     
 % Continue recording for trial length
-    pause(recordingLengthSeconds);  % this additional time seems essential for recording up to mouse grab
+    %pause(recordingLengthSeconds);  % this additional time seems essential for recording up to mouse grab
 
     %send status character 's' to prompt status of water drop
     write(arduinoSerial, 's', 'char');
     pause(5)
-
+    
+    disp('waiting for trial to end')
     startNextTrial = false;
-    sCheck = 'Unbroken';
+    sCheck = "Unbroken";
     while ~startNextTrial
         if arduinoSerial.NumBytesAvailable > 0
-               write(arduinoSerial, 's', 'char');
-               pause(1)
-               irBeam = readline(arduinoSerial);
-               disp(strcat(irBeam, sCheck));
-               if (strcmp(sCheck, irBeam) == 0) %meaning there's no longer a water drop
-                   disp('trial ended: mouse took water');
-                   disp(irBeam);
-                   startNextTrial = true;
-               end
+            write(arduinoSerial, 's', 'char');
+            pause(1)
+            irBeam = strtrim(readline(arduinoSerial));
+            %disp(irBeam);
+            if (strcmp(sCheck, irBeam) == 1) %meaning there's no longer a water drop
+                disp('trial ended: mouse took water');
+                startNextTrial = true;
+            end
         end
     end
+    flush(arduinoSerial);
 
 % Stop video acquisition
     stop(vid); % Stop video recording

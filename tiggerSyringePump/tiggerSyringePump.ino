@@ -40,40 +40,38 @@ void loop() {
         Serial.write(incomingByte);
         if (run == 0) // start running if not previosly running
         {
-          run = 1 ;
           digitalWrite(TTL_PIN, HIGH);   // turn the LED on (HIGH is the voltage level)
           delay(PAUSE);                       // wait
           digitalWrite(TTL_PIN, LOW);    // turn the LED off by making the voltage LOW
           
           // Send "1" back to serial after the PAUSE interval
           delay(ITI); 
-          Serial.println("1");
+          //Serial.println("1");
           
           delay(ITI);                       // wait for a second
-          run = 0;
         }
         else
         {
           digitalWrite(TTL_PIN, LOW); 
           delay(PAUSE); 
-          run = 0; // remain in 0 if no signal 
         }
       }
       else if (incomingByte == 115) // ASCII 115 is 's'
       {
-        int initiateLoop = 0;
+        int initiateLoop = 0; // variable controlling loop 
         int sensorState = 0, lastState = 0;
 
         while (initiateLoop == 0) {
           sensorState = digitalRead(SENSORPIN);
 
           if (sensorState && !lastState) {
-            Serial.write("Unbroken");
+            Serial.println("Unbroken");
             initiateLoop = 1;  //sets to break loop
           } 
-          if (!sensorState && lastState) 
+          else
           {
             Serial.println("Broken");
+            initiateLoop = 1;
           }
           lastState = sensorState;
         }
