@@ -6,86 +6,132 @@ arduinoSerial = serialport(port, baudRate);
 
 %% start video acquisition then trigger syringe pump
 
-recordingLengthSeconds = 5; % video recording / trial length
-pumpDelay = 2; % delay between starting video acquisition and triggering the pump
+% file location for later 'Z:\Basic_Sciences\Phys\ContractorLab\Projects\JJM\BehaviorData\water_reach_task\'
+% [CHANGE VAR.] 
+videoFolder = 'F:\WaterReachData\11232024';         %folder for all mouse trial videos
+mouseID = 'test-1';                                 %mouse ID
 
-%file location for later 'Z:\Basic_Sciences\Phys\ContractorLab\Projects\JJM\BehaviorData\water_reach_task\'
-videoFolder = 'F:\WaterReachData\'; %folder for all mouse trial videos
-mouseID = 'test-1';   %mouse ID
 newDirectory = strcat(videoFolder, mouseID); 
-mkdir(newDirectory);    %creates new directory with mouseID as folder name
+mkdir(newDirectory);                                %creates new directory with mouseID as folder name
+fileName = strcat(newDirectory, "\", mouseID, "_T", '.avi');
 
-trials = 10; %change for num of trials run
-counter = 0;
-%%
-for rec = 1:trials    
-    counter = counter + 1;
-    
-    fileName = strcat(newDirectory, "\", mouseID, "_T", string(counter), '.avi');
+%establish video settings
+vid = videoinput('winvideo', 1, 'Y800_640x480'); % Change to 'gentl' if preferred
+src = getselectedsource(vid);
+src.FrameRate = '110.0001'; % Set the desired frame rate
+vid.FramesPerTrigger = Inf; % Set to continuous recording
+vid.LoggingMode = "memory"; % Log frames to memory
 
-    vid = videoinput('gentl', 1); % Create video input object for the first camera
-    vid.FramesPerTrigger = Inf; % Set to continuous recording
-    vid.LoggingMode = 'disk'; % Store video on disk (optional, adjust if needed
+videoWriter = VideoWriter(fileName, 'Motion JPEG AVI');
+videoWriter.Quality = 75; % Set compression quality to 75
+videoWriter.FrameRate = 110; %match the camera frame rate
 
-    diskLogger = VideoWriter(fileName, 'Motion JPEG AVI'); % Specify the output file
-    diskLogger.Quality = 50;
-    vid.DiskLogger = diskLogger;
+% Open, preview and start video acquisition
+open(videoWriter);
+preview(vid);
+start(vid); % Start the video recording
+disp('Video recording started.');
 
-% Start video acquisition
-    start(vid); % Start the video recording
-    disp('Video recording started.');
+%%%
+% Variable to store timestamps for later analysis
+trialStartTimestamps = {};      % Start of trial timestamp
+beamBreakTimestamps = {};       % Successful trial
+ 
+% [CHANGE VAR] intializing variables for experiement
+trialLength = 15;                           % individual trial length
+expLengthMins = 3;                          % total length of exp
 
+delta = expLengthMins * 60 / 86400;         % becomes time difference needed to end trial
+startTime = now;                            % initiation of start time
+currTrial = 1;    
+
+while now < (startTime + delta)  
     % send 1 to arduino to trigger pump 
     write(arduinoSerial, '1', 'char');
     pause(5)
-    disp('start pump:')
-    
-    % Wait for the signal '1' from Arduino
-    % received = false;
-    % pause(3)
-    % disp('waiting for signal for Arduino')
-    % while ~received
-    %     if arduinoSerial.NumBytesAvailable > 0
-    %         response = read(arduinoSerial, 1, 'char');
-    %         if response == '1'
-    %             disp('Water delivery stopped.');
-    %             received = true;
-    %         end
-    %     end
-    %     pause(0.1); % Small delay 
-    % end
-    
-% Continue recording for trial length
-    %pause(recordingLengthSeconds);  % this additional time seems essential for recording up to mouse grab
-
-    %send status character 's' to prompt status of water drop
-    write(arduinoSerial, 's', 'char');
+   
+    % send status character 's' to prompt status of IR beam
     pause(5)
+    write(arduinoSerial, 's', 'char');
     
-    disp('waiting for trial to end')
+    % initial timing for start of trials
+    trialStartTimestamps{end + 1} = datetime('now'); % Record the current timestamp
+    tic                                              %start timer for trials
+    
+    % variables for while loop and initial state
+    % from arduinoSerial ('Broken' = water drop still there, 'Unbroken' =
+    % water drop missing
     startNextTrial = false;
     sCheck = "Unbroken";
+    
     while ~startNextTrial
-        if arduinoSerial.NumBytesAvailable > 0
-            write(arduinoSerial, 's', 'char');
+        if arduinoSerial.NumBytesAvailable > 0      % verifying open communication from arduino
+            write(arduinoSerial, 's', 'char');      % get status from IR beam
             pause(1)
             irBeam = strtrim(readline(arduinoSerial));
-            %disp(irBeam);
-            if (strcmp(sCheck, irBeam) == 1) %meaning there's no longer a water drop
-                disp('trial ended: mouse took water');
+            if (strcmp(sCheck, irBeam) == 1)        % if true, water drop missing
+                beamBreakTimestamps{end + 1} = datetime('now');         % Record the current timestamp
+                disp(strcat("trial ", num2str(currTrial), ": SUCCESS ", num2str(toc)));     % disp for personal tracking (not necessary)
                 startNextTrial = true;
+                currTrial = currTrial + 1;
+            elseif(now > (startTime + delta))   % check if entire exp is over, the loop could keep it running if not incl.
+                startNextTrial = true;
+            else
+                if(toc > trialLength)           % resets trial clock, new trial beginning
+                    tic
+                    trialStartTimestamps{end + 1} = datetime('now'); 
+                    disp(strcat("trial ", num2str(currTrial), ": FAILED"));
+                    currTrial = currTrial + 1;
+                end
             end
         end
     end
+    
+    % waits for trial to be over before initiating a new trial
+    if(now < (startTime + delta))   
+        while (trialLength > toc)
+        end
+    end
+    
+    % resets arduino comm. cleans backlogged status checks
     flush(arduinoSerial);
+end
+disp('experiment over')         % personal disp, not essent.
 
 % Stop video acquisition
-    stop(vid); % Stop video recording
+    stop(vid);                  % Stop video recording
+    closepreview(vid);
     disp('Video recording stopped.');
 
+    frames = getdata(vid);
+    for i = 1:size(frames, 4)
+        writeVideo(videoWriter, frames(:, :, :, i)); % Write each frame
+    end
+ 
+    close(videoWriter);
     delete(vid); % Delete video input object
+    disp(['Video saved as ', fileName]);
     clear vid; % Clear the variable
+
+% Write timestamps to a text file
+trialStarttimestampFile = strcat(newDirectory, "\", mouseID, "_trialStartTimestamps.txt");
+beamBreaktimestampFile = strcat(newDirectory, "\", mouseID, "_beamBreakTimestamps.txt");
+
+
+% Write each timestamp to the file
+trialStartID = fopen(trialStarttimestampFile, 'w'); % Open the file for writing
+fprintf(trialStartID, "Trial Start Timestamps:\n");
+for i = 1:length(trialStartTimestamps)
+    fprintf(trialStartID, "%s\n", datestr(trialStartTimestamps{i}, 'yyyy-mm-dd HH:MM:SS.FFF'));
 end
+fclose(trialStartID);
+
+beamBreakID = fopen(beamBreaktimestampFile, 'w'); % Open the file for writing
+fprintf(beamBreakID, "Beam Break Timestamps:\n");
+for i = 1:length(beamBreakTimestamps)
+    fprintf(beamBreakID, "%s\n", datestr(beamBreakTimestamps{i}, 'yyyy-mm-dd HH:MM:SS.FFF'));
+end
+fclose(beamBreakID); % Close the file
 
 %%
 clear arduinoSerial; % Close the connection to the Arduino

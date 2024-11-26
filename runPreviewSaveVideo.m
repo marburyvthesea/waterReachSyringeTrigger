@@ -1,6 +1,6 @@
 %%
-outputFile = 'F:\WaterReachData\11212024\output_video_3.avi';
-recording_time = 240;
+outputFile = ['F:\WaterReachData\11232024\mouse4_trial20.avi'];
+recording_time = 60
 %% Create video input object for the camera
 vid = videoinput('winvideo', 1, 'Y800_640x480'); % Change to 'gentl' if preferred
 src = getselectedsource(vid);
@@ -13,6 +13,7 @@ vid.LoggingMode = 'memory'; % Log frames to memory
 % Create a VideoWriter object for MJPEG compression
 videoWriter = VideoWriter(outputFile, 'Motion JPEG AVI');
 videoWriter.Quality = 75; % Set compression quality to 75
+
 videoWriter.FrameRate = 110; % Match the camera frame rate
 open(videoWriter);
 
@@ -37,7 +38,9 @@ end
 close(videoWriter);
 disp(['Video saved as ', outputFile]);
 %%
-% Clean up
+% Clean ups
 delete(vid);
 clear vid;
 
+
+//

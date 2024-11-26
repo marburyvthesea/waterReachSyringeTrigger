@@ -6,7 +6,7 @@ src = getselectedsource(vid);
 src.FrameRate = '110.0001'
 %%
 preview(vid);
-pause(30); % Preview 
+pause(240); % Preview 
 closepreview(vid);
 
 %%
