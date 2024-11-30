@@ -63,35 +63,41 @@ while now < (startTime + delta)
     startNextTrial = false;
     sCheck = "Unbroken";
     
+    % continous checking of IR beam leading to issues instead just wait a
+    % given length of time then get status of IR beam to determine if new
+    % drop needs to be delivered 
+    if(now < (startTime + delta))
+        pause(trialLength)
+    end
+
     while ~startNextTrial
         if arduinoSerial.NumBytesAvailable > 0      % verifying open communication from arduino
             write(arduinoSerial, 's', 'char');      % get status from IR beam
             pause(1)
             irBeam = strtrim(readline(arduinoSerial));
+            % check if success -- i.e. beam is unbroken / water drop missing
             if (strcmp(sCheck, irBeam) == 1)        % if true, water drop missing
                 beamBreakTimestamps{end + 1} = datetime('now');         % Record the current timestamp
                 disp(strcat("trial ", num2str(currTrial), ": SUCCESS ", num2str(toc)));     % disp for personal tracking (not necessary)
                 startNextTrial = true;
                 currTrial = currTrial + 1;
+            % check if trial block over 
             elseif(now > (startTime + delta))   % check if entire exp is over, the loop could keep it running if not incl.
                 startNextTrial = true;
+            % else assume failure -- i.e. beam remains broken
             else
                 if(toc > trialLength)           % resets trial clock, new trial beginning
                     tic
                     trialStartTimestamps{end + 1} = datetime('now'); 
                     disp(strcat("trial ", num2str(currTrial), ": FAILED"));
+                    % trigger air puff / other "punishment" signal, maybe
+                    % white light initially 
+                    % trigger white superwhite led here 
                     currTrial = currTrial + 1;
                 end
             end
         end
-    end
-    
-    % waits for trial to be over before initiating a new trial
-    if(now < (startTime + delta))   
-        while (trialLength > toc)
-        end
-    end
-    
+    end    
     % resets arduino comm. cleans backlogged status checks
     flush(arduinoSerial);
 end
