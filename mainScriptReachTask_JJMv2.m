@@ -67,6 +67,9 @@ while now < (startTime + delta)
     % given length of time then get status of IR beam to determine if new
     % drop needs to be delivered 
     if(now < (startTime + delta))
+        % perhaps instead here use either a capacitative sensor to detect
+        % touch to water spout or a proximity sensor to detect mouse arm at
+        % given point 
         pause(trialLength)
     end
 
