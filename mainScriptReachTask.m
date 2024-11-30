@@ -3,13 +3,16 @@
 port = 'COM3'; 
 baudRate = 9600; 
 arduinoSerial = serialport(port, baudRate);
+%%
+trialLength = 30;                           % individual trial length
+expLengthMins =5;                          % total length of exp
 
 %% start video acquisition then trigger syringe pump
 
 % file location for later 'Z:\Basic_Sciences\Phys\ContractorLab\Projects\JJM\BehaviorData\water_reach_task\'
 % [CHANGE VAR.] 
-videoFolder = 'F:\WaterReachData\11232024';         %folder for all mouse trial videos
-mouseID = 'test-1';                                 %mouse ID
+videoFolder = 'F:\WaterReachData\11272024';         %folder for all mouse trial videos
+mouseID = 'm1_r4';                                 %mouse ID
 
 newDirectory = strcat(videoFolder, mouseID); 
 mkdir(newDirectory);                                %creates new directory with mouseID as folder name
@@ -18,7 +21,7 @@ fileName = strcat(newDirectory, "\", mouseID, "_T", '.avi');
 %establish video settings
 vid = videoinput('winvideo', 1, 'Y800_640x480'); % Change to 'gentl' if preferred
 src = getselectedsource(vid);
-src.FrameRate = '110.0001'; % Set the desired frame rate
+src.FrameRate = '113.9303'; % Set the desired frame rate
 vid.FramesPerTrigger = Inf; % Set to continuous recording
 vid.LoggingMode = "memory"; % Log frames to memory
 
@@ -37,10 +40,6 @@ disp('Video recording started.');
 trialStartTimestamps = {};      % Start of trial timestamp
 beamBreakTimestamps = {};       % Successful trial
  
-% [CHANGE VAR] intializing variables for experiement
-trialLength = 15;                           % individual trial length
-expLengthMins = 3;                          % total length of exp
-
 delta = expLengthMins * 60 / 86400;         % becomes time difference needed to end trial
 startTime = now;                            % initiation of start time
 currTrial = 1;    
@@ -104,16 +103,17 @@ disp('experiment over')         % personal disp, not essent.
     disp('Video recording stopped.');
 
     frames = getdata(vid);
+
     for i = 1:size(frames, 4)
         writeVideo(videoWriter, frames(:, :, :, i)); % Write each frame
     end
- 
+
     close(videoWriter);
     delete(vid); % Delete video input object
     disp(['Video saved as ', fileName]);
     clear vid; % Clear the variable
 
-% Write timestamps to a text file
+% Write timestclose(videoWriter);amps to a text file
 trialStarttimestampFile = strcat(newDirectory, "\", mouseID, "_trialStartTimestamps.txt");
 beamBreaktimestampFile = strcat(newDirectory, "\", mouseID, "_beamBreakTimestamps.txt");
 
