@@ -1,0 +1,256 @@
+%% arduino parameters
+port = 'COM3'; 
+baudRate = 9600; 
+arduinoSerial = serialport(port, baudRate);
+%%
+trialLength =20;                           % individual trial length (seconds)
+expLengthMins = 25;
+%% start video acquisition then trigger syringe pump
+
+% Params
+videoFolder = 'F:\WaterReachData\10292025';
+timestamp = datestr(now, 'mm_dd_yy_HH_MM_SS');
+mouseID = ['3_2_t2' timestamp];
+
+% Paths
+newDirectory = fullfile(videoFolder, mouseID);
+if ~exist(newDirectory,'dir'); mkdir(newDirectory); end
+file_cam1 = fullfile(newDirectory, [mouseID '_cam1.avi']);
+file_cam2 = fullfile(newDirectory, [mouseID '_cam2.avi']);
+
+% Camera setup (two devices: 1 and 2)
+fmt = 'Y800_640x480';        % your format
+fps_str = '113.9303';        % requested camera FPS (string for winvideo)
+fps_writer = 113;            % VideoWriter nominal rate
+
+vid1 = videoinput('winvideo', 3, fmt);
+vid2 = videoinput('winvideo', 4, fmt);
+
+src1 = getselectedsource(vid1);
+src2 = getselectedsource(vid2);
+src1.FrameRate = fps_str;
+src2.FrameRate = fps_str;
+set(src2, 'VerticalFlip', 'on');
+
+% Write directly to disk in the background
+vw1 = VideoWriter(file_cam1, 'Motion JPEG AVI'); vw1.Quality = 75; vw1.FrameRate = fps_writer;
+vw2 = VideoWriter(file_cam2, 'Motion JPEG AVI'); vw2.Quality = 75; vw2.FrameRate = fps_writer;
+
+set(vid1, 'LoggingMode', 'disk', 'DiskLogger', vw1, 'ReturnedColorSpace','grayscale', 'FramesPerTrigger', Inf);
+set(vid2, 'LoggingMode', 'disk', 'DiskLogger', vw2, 'ReturnedColorSpace','grayscale', 'FramesPerTrigger', Inf);
+
+% (Optional) try to minimize start skew by starting both together
+triggerconfig(vid1,'immediate');
+triggerconfig(vid2,'immediate');
+
+% Open writers & start
+open(vw1); open(vw2);
+
+% Open two preview windows (non-blocking)
+preview(vid1);
+preview(vid2);
+
+% Start both cams as simultaneously as MATLAB allows
+start([vid1 vid2]);
+disp('Video recording started on both cameras.');
+
+
+%%%
+% Variable to store timestamps for later analysis
+trialStartTimestamps = {};      % Start of trial timestamp
+beamBreakTimestamps = {};       % Successful trial
+ 
+delta = expLengthMins * 60 / 86400;         % becomes time difference needed to end trial
+startTime = now;                            % initiation of start time
+currTrial = 1;    
+triggerPump=true;
+triggerBuzzer=true;
+
+while now < (startTime + delta)  
+             
+    if triggerPump
+        % send 1 to arduino to trigger pump and buzzer
+        write(arduinoSerial, '1', 'char');
+    elseif triggerBuzzer & ~triggerPump
+        % send 2 to arduino to trigger buzzer
+        write(arduinoSerial, '2', 'char');
+    end
+   
+    pause(10)
+   
+    % send status character 's' to prompt status of IR beam
+    %pause(5)
+    %write(arduinoSerial, 's', 'char');
+    
+    % initial timing for start of trials
+    trialStartTimestamps{end + 1} = datetime('now'); % Record the current timestamp
+    tic                                              %start timer for trials
+    
+    % variables for while loop and initial state
+    % from arduinoSerial ('Broken' = water drop still there, 'Unbroken' =
+    % water drop missing
+    startNextTrial = false;
+    
+    
+    % continous checking of IR beam leading to issues instead just wait a
+    % given length of time then get status of IR beam to determine if new
+    % drop needs to be delivered 
+    if(now < (startTime + delta))
+        % perhaps instead here use either a capacitative sensor to detect
+        % touch to water spout or a proximity sensor to detect mouse arm at
+        % given point 
+        %display time elapsing here
+        disp('Starting trial pause:');
+        startPauseTime = tic; % Start the timer
+        
+        %update video
+        pause(0.01);
+        drawnow limitrate nocallbacks;
+
+        while toc(startPauseTime) < trialLength
+            pause(0.01);
+            drawnow limitrate nocallbacks;
+            if mod(round(toc(startPauseTime)), 5) == 0 % Check every 5 seconds
+            fprintf('Elapsed: %.2f s | Remaining: %.2f s\n', toc(startPauseTime), max(trialLength - toc(startPauseTime), 0));
+            pause(1); % Prevent multiple prints within the same second
+            end
+        end
+    end
+    
+    sCheck = "Unbroken";
+    disp('reading beam')
+    write(arduinoSerial, 's', 'char');
+    pause(1)
+    
+    if arduinoSerial.NumBytesAvailable > 0      % verifying open communication from arduino
+        disp('is broken?')
+        rawData = strtrim(readline(arduinoSerial));
+        disp(['Raw data: ', rawData]);
+        % Clean the received string to remove leading/trailing digits or spaces
+        irBeam = regexprep(strtrim(rawData), '[^a-zA-Z]', '');
+        disp(['Cleaned data: ', irBeam]);
+        % check if success -- i.e. beam is unbroken / water drop missing
+        if (strcmp(sCheck, irBeam) == 1)        % if true, water drop missing
+            beamBreakTimestamps{end + 1} = datetime('now');         % Record the current timestamp
+            disp(strcat("trial ", num2str(currTrial), ": SUCCESS ", num2str(toc)));     % disp for personal tracking (not necessary)
+            %startNextTrial = true;
+            currTrial = currTrial + 1;
+            triggerPump=true;
+            triggerBuzzer=true;
+            flush(arduinoSerial);
+        elseif ~(strcmp(sCheck, irBeam) == 1)
+            trialStartTimestamps{end + 1} = datetime('now'); 
+            disp(strcat("trial ", num2str(currTrial), ": FAILED"));
+            % trigger air puff / other "punishment" signal, maybe
+            % white light initially 
+            % trigger white superwhite led here 
+            currTrial = currTrial + 1;
+            triggerPump=false;
+            triggerBuzzer=true;
+            flush(arduinoSerial);
+        else
+            disp('did not read beam, exiting')
+            startNextTrial = true;
+        end
+    else
+        disp('did not read beam')
+        flush(arduinoSerial);
+    end    
+    % resets arduino comm. cleans backlogged status checks
+    flush(arduinoSerial);
+    % Keep UI responsive
+    pause(0.01);
+    drawnow limitrate nocallbacks;
+end
+disp('experiment over')         % personal disp, not essent.
+
+% --- Teardown (both cameras) ---
+try stop([vid1 vid2]); end
+try closepreview(vid1); end
+try closepreview(vid2); end
+try close(vw1); end
+try close(vw2); end
+delete(vid1); delete(vid2);
+clear vid1 vid2 src1 src2
+disp(['Video saved as: ' file_cam1]);
+disp(['Video saved as: ' file_cam2]);
+
+% Save timestamps (same as your original)
+trialStartFile = fullfile(newDirectory, [mouseID '_trialStartTimestamps.txt']);
+beamBreakFile  = fullfile(newDirectory, [mouseID '_beamBreakTimestamps.txt']);
+
+fid = fopen(trialStartFile, 'w'); fprintf(fid, "Trial Start Timestamps:\n");
+for i=1:numel(trialStartTimestamps)
+    fprintf(fid, "%s\n", datestr(trialStartTimestamps{i}, 'yyyy-mm-dd HH:MM:SS.FFF'));
+end
+fclose(fid);
+
+fid = fopen(beamBreakFile, 'w'); fprintf(fid, "Beam Break Timestamps:\n");
+for i=1:numel(beamBreakTimestamps)
+    fprintf(fid, "%s\n", datestr(beamBreakTimestamps{i}, 'yyyy-mm-dd HH:MM:SS.FFF'));
+end
+fclose(fid);
+%% I'd like to just run video previews here after the "trial loop" has ended
+%% === Preview-only session (no logging to disk) ===
+try
+    % Create fresh video objects for preview only
+    fmt = 'Y800_640x480';        % same format
+    vidP1 = videoinput('winvideo', 3, fmt);
+    vidP2 = videoinput('winvideo', 4, fmt);
+
+    set(vidP1, 'ReturnedColorSpace','grayscale', 'FramesPerTrigger', Inf, 'LoggingMode','memory');
+    set(vidP2, 'ReturnedColorSpace','grayscale', 'FramesPerTrigger', Inf, 'LoggingMode','memory');
+
+    % Request same frame rate (driver permitting)
+    srcP1 = getselectedsource(vidP1);  srcP1.FrameRate = fps_str;
+    srcP2 = getselectedsource(vidP2);  srcP2.FrameRate = fps_str;
+
+    % If your driver supports hardware flip on device 4 you can try this:
+    % (commented, since support varies; keep the software flip below either way)
+    % try, set(srcP2, 'HorizontalFlip', 'on'); end
+
+    triggerconfig(vidP1,'immediate');
+    triggerconfig(vidP2,'immediate');
+
+    % One figure, two axes
+    fh = figure('Name','Preview-only (no logging). Close to stop.', 'NumberTitle','off');
+    t = tiledlayout(fh,1,2,'Padding','compact','TileSpacing','compact');
+
+    ax1 = nexttile(t,1); title(ax1,'Cam3'); axis(ax1,'image','off');
+    ax2 = nexttile(t,2); title(ax2,'Cam4 (flipped)'); axis(ax2,'image','off');
+
+    % Pre-create image handles at expected size (adjust if your format changes)
+    hIm1 = imshow(zeros(480,640,'uint8'),'Parent',ax1);
+    hIm2 = imshow(zeros(480,640,'uint8'),'Parent',ax2);
+
+    % Bind previews to our image handles
+    preview(vidP1, hIm1);
+
+    % For device 4, flip the preview horizontally (display only)
+    setappdata(hIm2, 'UpdatePreviewWindowFcn', ...
+        @(obj, event, h) set(h,'CData', flip(event.Data, 2)));
+    preview(vidP2, hIm2);
+
+    % Start both (preview will update continuously, no disk writes)
+    start([vidP1 vidP2]);
+
+    % Keep UI alive until user closes the window
+    disp('Preview-only running. Close the preview window to stop.');
+    while isvalid(fh)
+        pause(0.05);
+        drawnow limitrate nocallbacks;
+    end
+
+catch ME
+    warning('Preview-only session encountered an issue: %s', ME.message);
+end
+
+%% Cleanup (safe to call even if already closed)
+try stop([vidP1 vidP2]); end
+try closepreview(vidP1); end
+try closepreview(vidP2); end
+try delete(vidP1); delete(vidP2); end
+clear vidP1 vidP2 srcP1 srcP2 fh hIm1 hIm2
+%%
+clear arduinoSerial; % Close the connection to the Arduino
+disp('Serial port connection closed.');
