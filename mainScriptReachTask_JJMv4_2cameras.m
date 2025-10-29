@@ -10,7 +10,7 @@ expLengthMins = 25;
 % Params
 videoFolder = 'F:\WaterReachData\10292025';
 timestamp = datestr(now, 'mm_dd_yy_HH_MM_SS');
-mouseID = ['3_2_t2' timestamp];
+mouseID = ['2_6_t2' timestamp];
 
 % Paths
 newDirectory = fullfile(videoFolder, mouseID);
@@ -190,6 +190,21 @@ for i=1:numel(beamBreakTimestamps)
     fprintf(fid, "%s\n", datestr(beamBreakTimestamps{i}, 'yyyy-mm-dd HH:MM:SS.FFF'));
 end
 fclose(fid);
+
+% --- Save total success summary CSV ---
+totalTrialStarts  = numel(trialStartTimestamps);
+totalBeamBreaks   = numel(beamBreakTimestamps);
+successPct        = 100 * (totalBeamBreaks / max(totalTrialStarts,1));  % guard divide-by-zero
+
+summaryTbl = table(totalTrialStarts, totalBeamBreaks, successPct, ...
+    'VariableNames', {'trial_starts','beam_breaks','success_pct'});
+
+totalSuccessFile = fullfile(newDirectory, [mouseID '_totalSuccess.csv']);
+writetable(summaryTbl, totalSuccessFile);
+
+fprintf('Totals saved: %d trial starts, %d beam breaks (%.2f%%)\n', ...
+    totalTrialStarts, totalBeamBreaks, successPct);
+
 %% I'd like to just run video previews here after the "trial loop" has ended
 %% === Preview-only session (no logging to disk) ===
 try
