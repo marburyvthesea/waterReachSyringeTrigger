@@ -2,18 +2,22 @@
 port = 'COM3'; 
 baudRate = 9600; 
 arduinoSerial = serialport(port, baudRate);
+
+function out = ternary(cond, a, b)
+if cond, out = a; else, out = b; end
+end
 %%
-trialLength = 20;                           % individual trial length (seconds)
-expLengthMins = 25;
+trialLength = 5;                           % individual trial length (seconds)
+expLengthMins = 55;
 %% start video acquisition then trigger syringe pump
 
 % Params
-videoFolder = 'F:\WaterReachData\10312025';
+videoFolder = 'F:\WaterReachData\11112025';
 timestamp = datestr(now, 'mm_dd_yy_HH_MM_SS');
-mouseID = ['m2_t2_rr' timestamp];
+mouseID = ['m3_2_t1_rr60' timestamp];
 
 % >>> NEW: set reward probability X% (water delivered after a success)
-rewardPercentDelivered = 80;   % e.g., 70 means deliver on 70% of post-success trials
+rewardPercentDelivered = 60;   % e.g., 70 means deliver on 70% of post-success trials
 rewardProb = max(0,min(1,rewardPercentDelivered/100));  % clamp to [0,1]
 rng('shuffle');  % randomize once per session
 
@@ -58,44 +62,41 @@ delta     = expLengthMins * 60 / 86400;
 startTime = now;
 currTrial = 1;
 
-% >>> NEW: state for random-reward schedule
-lastTrialWasSuccess   = false;  % trial 1 has no prior success
-totalRewardDeliveries = 0;      % counts of delivered water
-totalRewardOmissions  = 0;      % counts of omitted water after success
+% >>> random-reward state
+lastTrialOutcome = 'none';   % 'success' | 'fail' | 'none' (for trial 1)
+totalRewardDeliveries = 0;
+totalRewardOmissions  = 0;
 
 while now < (startTime + delta)
 
-    % >>> NEW: decide whether to deliver water on THIS trial
-    % Rule: if previous trial was a success (and not the very first trial),
-    % deliver with probability rewardProb; otherwise deliver.
-    deliverThisTrial = true;
-    if currTrial > 1 && lastTrialWasSuccess
-        deliverThisTrial = (rand <= rewardProb);
-        if deliverThisTrial
-            totalRewardDeliveries = totalRewardDeliveries + 1;
-            disp(sprintf('[Trial %d] Post-success: delivering water (p=%.2f).', currTrial, rewardProb));
-        else
-            totalRewardOmissions  = totalRewardOmissions + 1;
-            disp(sprintf('[Trial %d] Post-success: OMISSION (only buzzer).', currTrial));
-        end
+    % --- decide whether to deliver on THIS trial ---
+    if currTrial == 1
+        deliverThisTrial = true;                      % always deliver on trial 1
+        reason = 'first trial';
+    elseif strcmp(lastTrialOutcome,'success')
+        deliverThisTrial = (rand <= rewardProb);      % X% after success
+        reason = ternary(deliverThisTrial, 'post-success: deliver', 'post-success: omission');
+    elseif strcmp(lastTrialOutcome,'fail')
+        deliverThisTrial = false;                     % 0% after failure
+        reason = 'post-failure: omission';
     else
-        % First trial or prior trial not a success -> deliver
-        totalRewardDeliveries = totalRewardDeliveries + 1;
-        disp(sprintf('[Trial %d] Deliver (first/non-success prior).', currTrial));
+        deliverThisTrial = true;                      % default safety
+        reason = 'default';
     end
 
-    % >>> Use Arduino according to decision
+    % count & trigger
     if deliverThisTrial
-        % '1' triggers pump + buzzer (your Arduino sketch)
-        write(arduinoSerial, '1', 'char');
+        totalRewardDeliveries = totalRewardDeliveries + 1;
+        write(arduinoSerial, '1', 'char');            % pump + buzzer
     else
-        % '2' triggers buzzer only (omission)
-        write(arduinoSerial, '2', 'char');
+        totalRewardOmissions  = totalRewardOmissions  + 1;
+        write(arduinoSerial, '2', 'char');            % buzzer only
     end
+    fprintf('[Trial %d] Decision: %s\n', currTrial, reason);
 
     pause(10);
 
-    % Start-of-trial timestamp and timer
+    % start-of-trial time stamp (once per trial)
     trialStartTimestamps{end + 1} = datetime('now');
     tic;
 
@@ -126,25 +127,23 @@ while now < (startTime + delta)
         irBeam = regexprep(strtrim(rawData), '[^a-zA-Z]', '');
         disp(['Cleaned data: ', irBeam]);
 
-        if strcmp(sCheck, irBeam)
+       if strcmp(sCheck, irBeam)
             beamBreakTimestamps{end + 1} = datetime('now');
             disp(strcat("trial ", num2str(currTrial), ": SUCCESS ", num2str(toc)));
-            currTrial = currTrial + 1;
-            lastTrialWasSuccess = true;     % >>> drives next trial’s random decision
-            flush(arduinoSerial);
-        else
-            trialStartTimestamps{end + 1} = datetime('now');
+            lastTrialOutcome = 'success';                 % drives next trial’s decision
+       else
             disp(strcat("trial ", num2str(currTrial), ": FAILED"));
-            currTrial = currTrial + 1;
-            lastTrialWasSuccess = false;    % >>> drives next trial’s decision
-            flush(arduinoSerial);
-        end
+            lastTrialOutcome = 'fail';                    % drives next trial’s decision
+       end
+
+currTrial = currTrial + 1;
+flush(arduinoSerial);
     else
         disp('did not read beam');
         flush(arduinoSerial);
         % Conservatively treat as non-success for next decision
         currTrial = currTrial + 1;
-        lastTrialWasSuccess = false;
+        lastTrialOutcome = 'fail';
     end
 
     flush(arduinoSerial);

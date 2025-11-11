@@ -4,13 +4,13 @@ baudRate = 9600;
 arduinoSerial = serialport(port, baudRate);
 %%
 trialLength = 20;                           % individual trial length (seconds)
-expLengthMins = 50;
+expLengthMins = 40;
 %% start video acquisition then trigger syringe pump
 
 % Params
-videoFolder = 'F:\WaterReachData\11032025';
+videoFolder = 'F:\WaterReachData\11112025';
 timestamp = datestr(now, 'mm_dd_yy_HH_MM_SS');
-mouseID = ['3_2_test' timestamp];
+mouseID = ['m2_4_t2' timestamp];
 
 % Paths
 newDirectory = fullfile(videoFolder, mouseID);
