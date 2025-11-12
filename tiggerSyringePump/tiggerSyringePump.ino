@@ -1,7 +1,9 @@
 // some setup variables
 int SENSORPIN = 4;  // PIN definition { new }
-int TTL_PIN = 12; // pull high to output
-int PAUSE = 5000; // pause after output
+int TTL_PIN = 13; // pull high to output
+int BUZZER = 9; // buzzzer to arduino pin 9
+int PAUSE_trigger = 100; // pause after output
+int PAUSE_buzzer = 9000; // pause after output
 int ITI = 1000; // pause between outputs 
 int run = 0; // state variable
 
@@ -14,7 +16,7 @@ void setup() {
   Serial.begin(9600);  // open serial port
   
   pinMode(TTL_PIN, OUTPUT); // initialize digital pin LED_BUILTIN as an output.
-  
+  pinMode(BUZZER, OUTPUT); // buzzer pin to output
   pinMode(SENSORPIN, INPUT);    // initialize sensor pin as input
   digitalWrite(SENSORPIN, HIGH); // turn on the pullup
 
@@ -41,8 +43,12 @@ void loop() {
         if (run == 0) // start running if not previosly running
         {
           digitalWrite(TTL_PIN, HIGH);   // turn the LED on (HIGH is the voltage level)
-          delay(PAUSE);                       // wait
+          tone(BUZZER, 8000);
+          delay(PAUSE_trigger);                       // wait
           digitalWrite(TTL_PIN, LOW);    // turn the LED off by making the voltage LOW
+          tone(BUZZER, 8000);
+          delay(PAUSE_buzzer);
+          noTone(BUZZER);              // Turn off buzzer
           
           // Send "1" back to serial after the PAUSE interval
           delay(ITI); 
@@ -53,7 +59,7 @@ void loop() {
         else
         {
           digitalWrite(TTL_PIN, LOW); 
-          delay(PAUSE); 
+          delay(PAUSE_trigger); 
         }
       }
       else if (incomingByte == 115) // ASCII 115 is 's'
